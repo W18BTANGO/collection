@@ -4,18 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My API Documentation</title>
-    <!-- Use CDN links for Swagger UI CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@4.1.3/swagger-ui.css">
 </head>
 <body>
     <div id="swagger-ui"></div>
-    <!-- Use CDN links for Swagger UI JS files -->
     <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@4.1.3/swagger-ui-bundle.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@4.1.3/swagger-ui-standalone-preset.js"></script>
     <script>
         window.onload = function () {
             const ui = SwaggerUIBundle({
-                url: "collection.yaml", // Ensure your YAML file is accessible
+                url: "collection.yaml",
                 dom_id: "#swagger-ui",
                 presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
                 layout: "StandaloneLayout"
