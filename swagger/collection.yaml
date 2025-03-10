@@ -1,0 +1,88 @@
+openapi: 3.0.0
+info:
+  title: Collection API
+  description: API for collecting and uploading datasets to S3
+  version: 1.0.0
+
+paths:
+  /house-prices:
+    post:
+      summary: Upload house prices dataset
+      description: Collects median house prices by suburb and uploads to S3.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                dataset:
+                  type: string
+                  format: binary
+                  description: XLSX or JSON file
+      responses:
+        "201":
+          description: Dataset successfully uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bucket_name:
+                    type: string
+                  dataset_id:
+                    type: string
+  /rent-prices:
+    post:
+      summary: Upload rent prices dataset
+      description: Collects median rent prices by suburb and uploads to S3.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                dataset:
+                  type: string
+                  format: binary
+                  description: XLSX or JSON file
+      responses:
+        "201":
+          description: Dataset successfully uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bucket_name:
+                    type: string
+                  dataset_id:
+                    type: string
+  /liveability-scores:
+    post:
+      summary: Upload liveability scores dataset
+      description: Collects liveability scores by suburb and uploads to S3.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                dataset:
+                  type: string
+                  format: binary
+                  description: XLSX or JSON file
+      responses:
+        "201":
+          description: Dataset successfully uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bucket_name:
+                    type: string
+                  dataset_id:
+                    type: string
