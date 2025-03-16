@@ -1,7 +1,9 @@
 import logging
 from dtos.collection_dtos import *
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
+import json
+import uuid
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -46,6 +48,7 @@ def parse_dat_lines(file_path: str) -> List[EventDTO]:
                         ),
                         event_type="sales report",
                         attribute=HouseSaleDTO(
+                            transaction_id=str(uuid.uuid4()),
                             district_code=district_code,
                             property_id=property_id,
                             price=price,
@@ -80,7 +83,7 @@ def parse_dat_lines(file_path: str) -> List[EventDTO]:
 
     return events
 
-def build_dataset_dto(events: List[EventDTO], dataset_id: str = "2024") -> Optional[DatasetDTO]:
+def build_dataset_dto(events: List[EventDTO], dataset_id: str = "2024") -> DatasetDTO:
     """Constructs the final DatasetDTO from parsed events."""
     if not events:
         return None
@@ -102,7 +105,9 @@ def build_dataset_dto(events: List[EventDTO], dataset_id: str = "2024") -> Optio
     logger.debug(f"Successfully built DatasetDTO with {len(events)} events")
     return dataset.model_dump()
 
-def parse_dat_file(file_path: str) -> Optional[DatasetDTO]:
+def parse_dat_file(file_path: str) -> DatasetDTO:
     """Main function to parse a .DAT file and return the final DatasetDTO."""
     events = parse_dat_lines(file_path)
     return build_dataset_dto(events)
+
+

@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional, List
 from datetime import datetime
-
+from decimal import Decimal
 
 # Define request model for input
 class ZipRequest(BaseModel):
@@ -20,6 +20,7 @@ class TimeObject(BaseModel):
     timezone: str = Field("AEDT", description="Time zone")
 
 class HouseSaleDTO(BaseModel):
+    transaction_id: str = Field (None, description="primary DB Key")
     district_code: Optional[int] = Field(None, description="District code of the property")
     property_id: Optional[int] = Field(None, description="Unique identifier for the property")
     price: Optional[int] = Field(None, description="Price of the property")
@@ -29,7 +30,7 @@ class HouseSaleDTO(BaseModel):
     street_name: Optional[str] = Field("", description="Street name of the property")
     suburb: Optional[str] = Field("", description="Suburb of the property")
     postcode: Optional[str] = Field("", description="Postcode of the property")
-    land_area: Optional[float] = Field(None, description="Land area of the property")
+    land_area: Optional[Decimal] = Field(None, description="Land area of the property")
     area_unit: Optional[str] = Field("", description="Unit of land area")
     contract_date: Optional[str] = Field(None, description="Contract date of the sale")
     settlement_date: Optional[str] = Field(None, description="Settlement date of the sale")

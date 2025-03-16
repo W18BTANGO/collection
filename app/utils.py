@@ -4,6 +4,8 @@ from services.collection_service import parse_dat_file
 import zipfile
 import logging
 from pathlib import Path
+import shutil
+from decimal import Decimal
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -63,3 +65,14 @@ def extract_all_zips(zip_path: str, extract_path: str):
             os.remove(inner_zip)  # Delete the extracted ZIP after processing
         except zipfile.BadZipFile:
             logger.warning(f"Skipping invalid ZIP file: {inner_zip}")
+
+def has_enough_disk_space(required_space: int, path: str = ".") -> bool:
+    """Check if there is enough disk space available."""
+    disk_usage = shutil.disk_usage(path)
+    return disk_usage.free >= required_space
+
+
+def decimal_to_float(obj):
+    if isinstance(obj, Decimal):
+        return float(obj)  # Or `int(obj)` if appropriate
+    raise TypeError("Type not serializable")

@@ -6,18 +6,20 @@ from pathlib import Path
 from typing import List
 import tempfile
 import requests
+import json
 
 import boto3
-from fastapi import APIRouter, HTTPException, UploadFile, File, Request, Depends
+from fastapi import APIRouter, HTTPException, UploadFile, File, Request, Response
 from dotenv import load_dotenv
 
-from dtos.collection_dtos import DatasetDTO, FileUploadResponseDTO
+from dtos.collection_dtos import *
 from services.collection_service import *
 from utils import *
 
 env_path = os.path.abspath("../local.env")
 
 logging.basicConfig(level=logging.DEBUG)
+boto3.set_stream_logger('botocore', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -25,7 +27,8 @@ router = APIRouter()
 BASE_URL = "/"
 PARSE_FROM_DAT_FOLDER = "/collection/parse/dat/directory"
 PARSE_FROM_DAT_SINGLE = "/collection/parse/dat"
-UPLOAD = "/upload"
+UPLOAD_S3 = "/upload"
+DOWNLOAD_S3 = "/download"
 
 # Read env variables
 logger.info("Reading in secret keys from local.env")
@@ -34,6 +37,9 @@ S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
 S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY")
 AWS_REGION = os.getenv("AWS_REGION")
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+DYNAMO_DB_ACCESS_KEY=os.getenv("DYNAMO_DB_ACCESS_KEY")
+DYNAMO_DB_SECRET_ACCESS_KEY=os.getenv("DYNAMO_DB_SECRET_ACCESS_KEY")
+DB_NAME=os.getenv("DB_NAME")
 
 # Initialize S3 client
 s3_client = boto3.client(
@@ -42,6 +48,14 @@ s3_client = boto3.client(
     aws_secret_access_key=S3_SECRET_ACCESS_KEY,
     region_name=AWS_REGION,
 )
+dynamodb = boto3.resource(
+    "dynamodb",
+    aws_access_key_id=DYNAMO_DB_ACCESS_KEY,
+    aws_secret_access_key=DYNAMO_DB_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION,
+)
+table = dynamodb.Table("House_price_data_test")
+
 
 TEMP_DIR = "temp_uploads"
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -62,6 +76,10 @@ async def parse_directory_folder(
     - A `.zip` file uploaded directly.
     - A `.zip` file from a provided URL.
     """
+    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
+    if file and file.size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large")
+
     url = None
     if "application/json" in request.headers.get("content-type", "").lower():
         try:
@@ -79,9 +97,17 @@ async def parse_directory_folder(
 
     try:
         if url:
+            # Check file size before downloading
             response = requests.get(url, stream=True)
-            if response.status_code != 200:
-                raise HTTPException(status_code=400, detail="Failed to download ZIP file from URL")
+            file_size = int(response.headers.get("Content-Length", 0))
+            if file_size > MAX_FILE_SIZE:
+                raise HTTPException(status_code=413, detail="File too large")
+
+            # Check disk space
+            if not has_enough_disk_space(file_size, temp_dir):
+                raise HTTPException(status_code=507, detail="Insufficient disk space")
+
+            # Stream the file to disk
             with open(zip_path, "wb") as buffer:
                 for chunk in response.iter_content(chunk_size=8192):
                     buffer.write(chunk)
@@ -90,8 +116,10 @@ async def parse_directory_folder(
             with open(zip_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
 
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(extract_path)
+        # Extract and process the ZIP file
+        extract_all_zips(zip_path, extract_path)
+
+        #TODO Split up writing to DB and get event
 
         dat_files = list(Path(extract_path).rglob("*.DAT"))
         if not dat_files:
@@ -102,17 +130,49 @@ async def parse_directory_folder(
             events = parse_dat_lines(str(dat_file))
             if events:
                 all_events.extend(events)
-        shutil.rmtree(temp_dir)
-        
+
+        with table.batch_writer() as batch:
+            logger.debug(f"Total events to insert: {len(all_events)}")
+            
+            for event in all_events:
+                if not isinstance(event.attribute, HouseSaleDTO):
+                    logger.debug(f"Skipping event because attribute is not a HouseSaleDTO: {event}")
+                    continue
+                
+                event_data = event.attribute.model_dump()  # Convert Pydantic model to dictionary
+                
+                if "property_id" not in event_data or event_data["property_id"] is None:
+                    logger.debug(f"Skipping event with missing property_id: {event_data}")
+                    continue
+                if "property_id" in event_data and event_data["property_id"] is not None:
+                    event_data["property_id"] = str(event_data["property_id"])
+                    batch.put_item(Item=event_data)
+
+
         final_dataset = build_dataset_dto(all_events)
         if not final_dataset:
             raise HTTPException(status_code=400, detail="No valid data found.")
 
-        return final_dataset
+        json_data = json.dumps(final_dataset, indent=4, default=decimal_to_float)
+
+
+
+        # Return the JSON as a downloadable file
+        return Response(
+            content=json_data,
+            media_type="application/json",
+            headers={"Content-Disposition": f"attachment; filename=dataset.json"}
+        )
+
 
     except Exception as e:
-        shutil.rmtree(temp_dir, ignore_errors=True)  # Ensure cleanup on error
         raise HTTPException(status_code=500, detail=f"Error processing ZIP: {str(e)}")
+    finally:
+        # Cleanup temporary files
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+        if os.path.exists(extract_path):
+            shutil.rmtree(extract_path)
     
 
 @router.post("/collection/parse/dat", response_model=DatasetDTO)
@@ -140,7 +200,7 @@ async def parse_directory_single(file: UploadFile = File(...)):
     
 
 
-@router.post(UPLOAD, response_model=FileUploadResponseDTO)
+@router.post(UPLOAD_S3, response_model=FileUploadResponseDTO)
 async def upload_file(file: UploadFile = File(...)):
     """
     Upload a file to the S3 bucket.
@@ -156,7 +216,7 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
-@router.get("/download-from-s3/{file_name}")
+@router.get("DOWNLOAD_S3/{file_name}")
 async def download_from_s3(file_name: str):
     file_url = f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/uploads/{file_name}"
     return {"download_url": file_url}
