@@ -1,13 +1,12 @@
 import logging
 import os
 import boto3
-from typing import List
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from dotenv import load_dotenv
 
-from ..services.collection_service import parse_dat_file
-from ..dtos.collection_dtos import *
-from ..utils import validate_directory, process_directory
+from dtos.collection_dtos import *
+from services.collection_service import parse_dat_file
+from utils import validate_directory, process_directory
 
 # Load environment variables
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../local.env'))
