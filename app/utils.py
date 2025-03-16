@@ -1,6 +1,12 @@
 from fastapi import APIRouter, HTTPException
 import os
 from services.collection_service import parse_dat_file
+import zipfile
+import logging
+from pathlib import Path
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 def validate_directory(directory_path: str):
@@ -36,3 +42,24 @@ def process_directory(directory_path: str):
             if parsed_data:
                 final_data.extend(parsed_data)
     return final_data
+
+
+def extract_all_zips(zip_path: str, extract_path: str):
+    """
+    Recursively extracts a ZIP file, handling nested ZIP files.
+    Extracts all ZIPs into the given extract_path.
+    """
+    os.makedirs(extract_path, exist_ok=True)
+    
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        zip_ref.extractall(extract_path)
+
+    # Recursively extract any ZIP files found inside the extracted folder
+    for inner_zip in Path(extract_path).rglob("*.zip"):
+        temp_extract_path = inner_zip.with_suffix("")  # Remove ".zip" from path
+        try:
+            with zipfile.ZipFile(inner_zip, "r") as nested_zip:
+                nested_zip.extractall(temp_extract_path)
+            os.remove(inner_zip)  # Delete the extracted ZIP after processing
+        except zipfile.BadZipFile:
+            logger.warning(f"Skipping invalid ZIP file: {inner_zip}")

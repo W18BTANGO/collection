@@ -4,6 +4,7 @@ import shutil
 import zipfile
 from pathlib import Path
 from typing import List
+import tempfile
 
 import boto3
 from fastapi import APIRouter, HTTPException, UploadFile, File
@@ -11,7 +12,7 @@ from dotenv import load_dotenv
 
 from dtos.collection_dtos import DatasetDTO, FileUploadResponseDTO
 from services.collection_service import *
-from utils import process_file
+from utils import *
 
 # Load environment variables
 env_path = os.path.abspath("../local.env")
@@ -53,8 +54,8 @@ def read_root():
 @router.post(PARSE_FROM_DAT_FOLDER, response_model=DatasetDTO)
 async def parse_directory_folder(file: UploadFile = File(...)):
     """
-    Endpoint to parse multiple .DAT files from an uploaded .zip file.
-    - Upload a `.zip` file containing multiple `.DAT` files.
+    Endpoint to parse multiple .DAT files from an uploaded .zip file, including nested .zip files.
+    - Upload a `.zip` file containing multiple `.DAT` files (or nested .zip archives).
     - The system extracts and processes all .DAT files into a single DatasetDTO.
     """
     zip_path = os.path.join(TEMP_DIR, file.filename)
@@ -66,9 +67,8 @@ async def parse_directory_folder(file: UploadFile = File(...)):
         with open(zip_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Extract files
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(extract_path)
+        # Recursively extract all ZIP files
+        extract_all_zips(zip_path, extract_path)
 
         # Find all .DAT files
         dat_files = list(Path(extract_path).rglob("*.DAT"))
