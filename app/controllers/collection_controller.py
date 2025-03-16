@@ -5,17 +5,18 @@ import zipfile
 from pathlib import Path
 from typing import List
 import tempfile
+import requests
 
 import boto3
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Request, Depends
 from dotenv import load_dotenv
 
 from dtos.collection_dtos import DatasetDTO, FileUploadResponseDTO
 from services.collection_service import *
 from utils import *
 
-# Load environment variables
 env_path = os.path.abspath("../local.env")
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -42,8 +43,8 @@ s3_client = boto3.client(
     region_name=AWS_REGION,
 )
 
-TEMP_DIR = "temp_uploads"  # Temporary directory for extracted files
-os.makedirs(TEMP_DIR, exist_ok=True)  # Ensure the directory exists
+TEMP_DIR = "temp_uploads"
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 @router.get(BASE_URL)
 def read_root():
@@ -52,51 +53,66 @@ def read_root():
 
 
 @router.post(PARSE_FROM_DAT_FOLDER, response_model=DatasetDTO)
-async def parse_directory_folder(file: UploadFile = File(...)):
+async def parse_directory_folder(
+    request: Request,
+    file: UploadFile = File(None),
+):
     """
-    Endpoint to parse multiple .DAT files from an uploaded .zip file, including nested .zip files.
-    - Upload a `.zip` file containing multiple `.DAT` files (or nested .zip archives).
-    - The system extracts and processes all .DAT files into a single DatasetDTO.
+    Endpoint to parse multiple .DAT files from either:
+    - A `.zip` file uploaded directly.
+    - A `.zip` file from a provided URL.
     """
-    zip_path = os.path.join(TEMP_DIR, file.filename)
-    extract_path = os.path.join(TEMP_DIR, file.filename.replace(".zip", ""))
-    all_events = []  # List to store events from all files
+    url = None
+    if "application/json" in request.headers.get("content-type", "").lower():
+        try:
+            body = await request.json()
+            url = body.get("url")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    if not file and not url:
+        raise HTTPException(status_code=400, detail="Either a file or a URL must be provided.")
+
+    temp_dir = tempfile.mkdtemp()
+    zip_path = os.path.join(temp_dir, "input.zip")
+    extract_path = os.path.join(temp_dir, "extracted_files")
 
     try:
-        # Save uploaded ZIP file
-        with open(zip_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        if url:
+            response = requests.get(url, stream=True)
+            if response.status_code != 200:
+                raise HTTPException(status_code=400, detail="Failed to download ZIP file from URL")
+            with open(zip_path, "wb") as buffer:
+                for chunk in response.iter_content(chunk_size=8192):
+                    buffer.write(chunk)
 
-        # Recursively extract all ZIP files
-        extract_all_zips(zip_path, extract_path)
+        elif file:
+            with open(zip_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
 
-        # Find all .DAT files
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(extract_path)
+
         dat_files = list(Path(extract_path).rglob("*.DAT"))
         if not dat_files:
-            raise HTTPException(status_code=400, detail="No .DAT files found in the uploaded ZIP.")
+            raise HTTPException(status_code=400, detail="No .DAT files found.")
 
-        logger.info(f"Found {len(dat_files)} DAT files: {dat_files}")
-
-        # Process each .DAT file
+        all_events = []
         for dat_file in dat_files:
             events = parse_dat_lines(str(dat_file))
             if events:
                 all_events.extend(events)
-
-        # Cleanup
-        shutil.rmtree(extract_path)  # Remove extracted files
-        os.remove(zip_path)  # Remove zip file
-
-        # Construct final DatasetDTO
+        shutil.rmtree(temp_dir)
+        
         final_dataset = build_dataset_dto(all_events)
         if not final_dataset:
-            raise HTTPException(status_code=400, detail="No valid data found in the uploaded files.")
+            raise HTTPException(status_code=400, detail="No valid data found.")
 
         return final_dataset
 
     except Exception as e:
-        logger.error(f"Error processing ZIP: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        shutil.rmtree(temp_dir, ignore_errors=True)  # Ensure cleanup on error
+        raise HTTPException(status_code=500, detail=f"Error processing ZIP: {str(e)}")
     
 
 @router.post("/collection/parse/dat", response_model=DatasetDTO)

@@ -1,10 +1,14 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional, List
 from datetime import datetime
+
 
 # Define request model for input
 class ZipRequest(BaseModel):
     zip_url: str
+
+class ParseRequest(BaseModel):
+    url: Optional[str] = Field(None, description="URL of the ZIP file to download")
 
 class DirectoryPath(BaseModel):
     directory_path: str
@@ -33,18 +37,6 @@ class HouseSaleDTO(BaseModel):
     property_type: Optional[str] = Field("", description="Type of property")
     sale_type: Optional[str] = Field("", description="Type of sale")
     nature_of_property: Optional[str] = Field(None, description="Nature of the property")
-
-    @validator("price", pre=True)
-    def set_default_price(cls, v):
-        return v if v is not None else 0  # Default price to 0 if None
-
-    @validator("land_area", pre=True)
-    def set_default_land_area(cls, v):
-        return v if v is not None else 0.0  # Default land area to 0.0 if None
-
-    @validator("unit_number", "nature_of_property", pre=True)
-    def set_default_optional_strings(cls, v):
-        return v if v is not None else ""  # Default optional strings to empty string if None
 
 class EventDTO(BaseModel):
     time_object: TimeObject
