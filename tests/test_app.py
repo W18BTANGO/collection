@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from app.main import app  # Assuming your FastAPI app is in the file app.py
+from app.services.collection_service import app  # Assuming your FastAPI app is in the file app.py
 import os
 import tempfile
 import json
