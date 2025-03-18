@@ -1,15 +1,33 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 import os
-from services.collection_service import parse_dat_file
+# from main import parse_dat_file  # Remove this import
 import zipfile
 import logging
 from pathlib import Path
 import shutil
 from decimal import Decimal
+from dotenv import load_dotenv
+import requests
+
+from app.services.collection_service import parse_dat_file
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
+def load_env_variables(env_path):
+    if load_dotenv(env_path):
+        logger.info(f"Environment variables loaded from {env_path}")
+    else:
+        logger.info(f"Failed to load environment variables from {env_path}")
+
+    required_vars = ["AWS_REGION", "S3_ACCESS_KEY", "S3_SECRET_ACCESS_KEY", "S3_BUCKET_NAME", "DYNAMO_DB_ACCESS_KEY", "DYNAMO_DB_SECRET_ACCESS_KEY"]
+    for var in required_vars:
+        value = os.getenv(var)
+        if not value:
+            raise EnvironmentError(f"Environment variable {var} is not set.")
+        logger.debug(f"{var}={value}")
+        
 
 def validate_directory(directory_path: str):
     """
@@ -65,6 +83,34 @@ def extract_all_zips(zip_path: str, extract_path: str):
             os.remove(inner_zip)  # Delete the extracted ZIP after processing
         except zipfile.BadZipFile:
             logger.warning(f"Skipping invalid ZIP file: {inner_zip}")
+
+def extract_zips_from_input(temp_dir, url=None, file=None):
+    """
+    Extracts ZIP files from either a URL or an uploaded file.
+    """
+    extract_path = os.path.join(temp_dir, "extracted")
+    os.makedirs(extract_path, exist_ok=True)
+
+    if url:
+        # Download the ZIP file from the URL
+        zip_path = os.path.join(temp_dir, "input.zip")
+        response = requests.get(url)
+        if response.status_code == 200:
+            with open(zip_path, "wb") as f:
+                f.write(response.content)
+        else:
+            raise HTTPException(status_code=400, detail="Failed to download ZIP file from URL")
+    elif file:
+        # Save the uploaded file to the temp directory
+        zip_path = os.path.join(temp_dir, file.filename)
+        with open(zip_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    else:
+        raise HTTPException(status_code=400, detail="Either a file or a URL must be provided.")
+
+    # Extract the ZIP file
+    extract_all_zips(zip_path, extract_path)
+    return extract_path
 
 def has_enough_disk_space(required_space: int, path: str = ".") -> bool:
     """Check if there is enough disk space available."""

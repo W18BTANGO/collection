@@ -4,8 +4,8 @@ import logging
 import boto3
 import os
 from dotenv import load_dotenv
-from utils import *
-from dtos.collection_dtos import EventDTO
+from app.utils import *
+from app.dtos.collection_dtos import EventDTO
 from typing import List
 
 env_path = os.path.abspath("../local.env")

@@ -1,9 +1,11 @@
 import pytest
 from fastapi.testclient import TestClient
-from app.services.collection_service import app  # Assuming your FastAPI app is in the file app.py
+from main import app
 import os
 import tempfile
 import json
+
+client = TestClient(app)
 
 @pytest.fixture
 def client():
@@ -33,7 +35,7 @@ def mock_dat_files():
 
 def test_parse_directory_success(client, mock_dat_files):
     # Test successful parsing
-    response = client.post('/parse', json={"directory_path": '../test'})
+    response = client.post('/collection/parse/dat/directory', json={"directory_path": mock_dat_files})
     
     assert response.status_code == 200
     data = response.json()
@@ -42,20 +44,18 @@ def test_parse_directory_success(client, mock_dat_files):
 
 def test_parse_directory_no_path(client):
     # Test no directory path provided
-    response = client.post('/parse_directory', json={})
+    response = client.post('/collection/parse/dat/directory', json={})
     
-    assert response.status_code == 404  # Unprocessable Entity status code
+    assert response.status_code == 400  # Bad Request status code
     data = response.json()
     assert 'detail' in data  # Make sure 'detail' key exists
 
-
 def test_parse_directory_invalid_path(client):
     # Test invalid directory path
-    response = client.post('/parse', json={"directory_path": "/invalid/path"})
+    response = client.post('/collection/parse/dat/directory', json={"directory_path": "/invalid/path"})
     
     assert response.status_code == 400
     data = response.json()
-    print(data)
     assert data['detail'] == 'Provided path is not a directory'
 
 def test_parse_directory_no_dat_files(client, mock_dat_files):
@@ -63,9 +63,13 @@ def test_parse_directory_no_dat_files(client, mock_dat_files):
     empty_folder = os.path.join(mock_dat_files, "empty_folder")
     os.makedirs(empty_folder)
 
-    response = client.post('/parse', json={"directory_path": empty_folder})
+    response = client.post('/collection/parse/dat/directory', json={"directory_path": empty_folder})
 
-    assert response.status_code == 404
+    assert response.status_code == 400
     data = response.json()
-    print(data)
     assert data['detail'] == 'No data found to parse'
+
+def test_read_root(client):
+    response = client.get("/")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Data collection service. Please specify an endpoint"}

@@ -1,5 +1,5 @@
 import logging
-from dtos.collection_dtos import *
+from app.dtos.collection_dtos import *
 from datetime import datetime
 from typing import List, Any
 import uuid

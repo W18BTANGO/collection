@@ -8,26 +8,20 @@ import json
 from fastapi import APIRouter, HTTPException, UploadFile, File, Request, Response
 from dotenv import load_dotenv
 
-from dtos.collection_dtos import *
-from services.collection_service import *
-from utils import *
-from services.database_service import *
+from app.dtos.collection_dtos import *
+from app.services.collection_service import build_dataset_dto, extract_events_from_directory
+from app.utils import *
+from app.services.database_service import *
+from app.services.parse_service import parse_dat_file  # Updated import
 
-env_path = os.path.abspath("../local.env")
+env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../local.env"))
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 logger.info("Reading in secret keys from local.env")
-load_dotenv(env_path, override=True)
-S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
-S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY")
-AWS_REGION = os.getenv("AWS_REGION")
-S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
-DYNAMO_DB_ACCESS_KEY=os.getenv("DYNAMO_DB_ACCESS_KEY")
-DYNAMO_DB_SECRET_ACCESS_KEY=os.getenv("DYNAMO_DB_SECRET_ACCESS_KEY")
-DB_NAME=os.getenv("DB_NAME")
+load_env_variables(env_path)
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
 TEMP_DIR = "temp_uploads"
 
@@ -43,9 +37,9 @@ DOWNLOAD_S3 = "/download"
 
 s3_client = boto3.client(
     "s3",
-    aws_access_key_id=S3_ACCESS_KEY,
-    aws_secret_access_key=S3_SECRET_ACCESS_KEY,
-    region_name=AWS_REGION,
+    aws_access_key_id=os.getenv("S3_ACCESS_KEY"),
+    aws_secret_access_key=os.getenv("S3_SECRET_ACCESS_KEY"),
+    region_name=os.getenv("AWS_REGION"),
 )
 dynamodb = boto3.resource(
     "dynamodb",
@@ -78,9 +72,12 @@ async def parse_directory_folder(
     if file and file.size > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large")
     url = None
+    logger.info("Request headers: " + str(request.headers))
     if "application/json" in request.headers.get("content-type", "").lower():
+        logger.info("Request is JSON" + str(request.headers.get("content-type", "").lower()))
         try:
             body = await request.json()
+            logger.info("Request body: " + str(body))
             url = body.get("url")
         except Exception as e:
             raise HTTPException(status_code=400, detail="Invalid JSON body")
@@ -94,6 +91,8 @@ async def parse_directory_folder(
 
     try:
         all_events = extract_events_from_directory(extract_path)
+        if not all_events:
+            raise HTTPException(status_code=400, detail="No data found to parse")
         return all_events
 
     except Exception as e:
@@ -184,7 +183,7 @@ async def events_into_db(all_events: List[EventDTO]):
     Accepts a JSON array of event objects.
     """
     try:
-        logger.log("Inserting events into Database")
+        logger.info("Inserting events into Database")
         database_service.insert_events_into_db(all_events)
 
     except HTTPException as e:
@@ -201,8 +200,8 @@ async def upload_file(file: UploadFile = File(...)):
     try:
         file_path = f"uploads/{file.filename}"  # S3 object path
         logger.debug(f"File path: {file_path}")
-        s3_client.upload_fileobj(file.file, S3_BUCKET_NAME, file_path)
-        file_url = f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{file_path}"
+        s3_client.upload_fileobj(file.file, os.getenv("S3_BUCKET_NAME"), file_path)
+        file_url = f"https://{os.getenv('S3_BUCKET_NAME')}.s3.{os.getenv('AWS_REGION')}.amazonaws.com/{file_path}"
         return FileUploadResponseDTO(message="File uploaded successfully", file_url=file_url)
 
     except Exception as e:
@@ -211,5 +210,5 @@ async def upload_file(file: UploadFile = File(...)):
 
 @router.get(f"{DOWNLOAD_S3}/" + "{file_name}")
 async def download_from_s3(file_name: str):
-    file_url = f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/uploads/{file_name}"
+    file_url = f"https://{os.getenv('S3_BUCKET_NAME')}.s3.{os.getenv('AWS_REGION')}.amazonaws.com/uploads/{file_name}"
     return {"download_url": file_url}
