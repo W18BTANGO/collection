@@ -39,6 +39,7 @@ bower_components
 build/Release
 
 # Dependency directories
+.venv/
 node_modules/
 jspm_packages/
 package-lock.json
@@ -63,6 +64,7 @@ web_modules/
 .rts2_cache_cjs/
 .rts2_cache_es/
 .rts2_cache_umd/
+*.pyc
 
 # Optional REPL history
 .node_repl_history

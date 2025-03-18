@@ -4,3 +4,11 @@ python-dateutil==2.9.0.post0
 pytz==2025.1
 six==1.17.0
 tzdata==2025.1
+
+pydantic~=2.10.6
+uvicorn~=0.34.0
+fastapi~=0.115.11
+boto3~=1.37.13
+dotenv~=0.9.9
+python-dotenv~=1.0.1
+pytest~=8.3.5
