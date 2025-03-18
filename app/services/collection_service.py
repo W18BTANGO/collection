@@ -49,7 +49,7 @@ def parse_dat_lines(file_path: str) -> List[EventDTO]:
                         ),
                         event_type="sales report",
                         attribute=HouseSaleDTO(
-                            transaction_id=str(uuid.uuid4()),
+                            transaction_id=parts[23].strip() or 'No Dealing Number',
                             district_code=district_code,
                             property_id=property_id,
                             price=price,

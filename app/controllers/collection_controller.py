@@ -12,7 +12,6 @@ from app.dtos.collection_dtos import *
 from app.services.collection_service import build_dataset_dto, extract_events_from_directory
 from app.utils import *
 from app.services.database_service import *
-from app.services.parse_service import parse_dat_file  # Updated import
 
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../local.env"))
 
@@ -47,7 +46,7 @@ dynamodb = boto3.resource(
     aws_secret_access_key=os.getenv("DYNAMO_DB_SECRET_ACCESS_KEY"),
     region_name=os.getenv("AWS_REGION"),
 )
-dynamodb_table = dynamodb.Table("House_price_data_test")
+dynamodb_table = dynamodb.Table("Property_transactions_prod")
 database_service = DatabaseService(dynamodb_table)
 os.makedirs(TEMP_DIR, exist_ok=True)
 
@@ -93,6 +92,16 @@ async def parse_directory_folder(
         all_events = extract_events_from_directory(extract_path)
         if not all_events:
             raise HTTPException(status_code=400, detail="No data found to parse")
+        
+        # Convert all_events to JSON
+        json_data = json.dumps([event.dict() for event in all_events], indent=4, default=decimal_to_float)
+        
+        # Save JSON to a local file
+        local_file_path = os.path.join(os.curdir, "events.json")
+        with open(local_file_path, "w") as json_file:
+            json_file.write(json_data)
+        
+        # Return the events
         return all_events
 
     except Exception as e:
