@@ -1,9 +1,10 @@
 import logging
 from dtos.collection_dtos import *
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-import json
+from typing import List, Any
 import uuid
+from pathlib import Path
+from fastapi import HTTPException
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 def parse_dat_lines(file_path: str) -> List[EventDTO]:
     """Parses lines from a .DAT file and extracts property records."""
     events = []
-    current_time = datetime.now().isoformat()  # Current timestamp
+    current_time = datetime.now().isoformat()
 
     try:
         with open(file_path, 'r') as file:
@@ -77,11 +78,10 @@ def parse_dat_lines(file_path: str) -> List[EventDTO]:
     except Exception as e:
         logger.error(f"Error processing file {file_path}: {e}")
         return []
-
     if not events:
         logger.warning(f"No valid events found in {file_path}")
-
     return events
+
 
 def build_dataset_dto(events: List[EventDTO], dataset_id: str = "2024") -> DatasetDTO:
     """Constructs the final DatasetDTO from parsed events."""
@@ -105,9 +105,25 @@ def build_dataset_dto(events: List[EventDTO], dataset_id: str = "2024") -> Datas
     logger.debug(f"Successfully built DatasetDTO with {len(events)} events")
     return dataset.model_dump()
 
+
 def parse_dat_file(file_path: str) -> DatasetDTO:
     """Main function to parse a .DAT file and return the final DatasetDTO."""
     events = parse_dat_lines(file_path)
     return build_dataset_dto(events)
 
 
+def extract_events_from_directory(directory: str) -> List[EventDTO]:
+    """
+    Extract events from all .DAT files in the specified directory.
+    """
+    dat_files = list(Path(directory).rglob("*.DAT"))
+    if not dat_files:
+        raise HTTPException(status_code=400, detail="No .DAT files found.")
+
+    all_events = []
+    for dat_file in dat_files:
+        events = parse_dat_lines(str(dat_file))
+        if events:
+            all_events.extend(events)
+    
+    return all_events
