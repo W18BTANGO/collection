@@ -5,7 +5,6 @@ from typing import List
 import tempfile
 import json
 
-import boto3
 from fastapi import APIRouter, HTTPException, UploadFile, File, Request, Response
 from dotenv import load_dotenv
 
@@ -17,7 +16,6 @@ from services.database_service import *
 env_path = os.path.abspath("../local.env")
 
 logging.basicConfig(level=logging.DEBUG)
-boto3.set_stream_logger('botocore', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -38,7 +36,7 @@ BASE_URL = "/"
 PARSE_FROM_DAT_FOLDER = "/collection/parse/dat/directory"
 PARSE_FROM_DAT_SINGLE = "/collection/parse/dat"
 COLLECT_AS_DATASET_DTO = "/collection/parse/dat/toevent"
-UPLOAD_DB = "/collection/uploadtoDB/dat"
+UPLOAD_DB = "/collection/uploadtoDB"
 UPLOAD_S3 = "/upload"
 DOWNLOAD_S3 = "/download"
 
@@ -49,6 +47,14 @@ s3_client = boto3.client(
     aws_secret_access_key=S3_SECRET_ACCESS_KEY,
     region_name=AWS_REGION,
 )
+dynamodb = boto3.resource(
+    "dynamodb",
+    aws_access_key_id=os.getenv("DYNAMO_DB_ACCESS_KEY"),
+    aws_secret_access_key=os.getenv("DYNAMO_DB_SECRET_ACCESS_KEY"),
+    region_name=os.getenv("AWS_REGION"),
+)
+dynamodb_table = dynamodb.Table("House_price_data_test")
+database_service = DatabaseService(dynamodb_table)
 os.makedirs(TEMP_DIR, exist_ok=True)
 
 
@@ -171,24 +177,20 @@ async def build_final_dataset(
             os.remove(zip_path)
 
 
-@router.post(UPLOAD_DB, response_model=Any) #TODO create Dto
+@router.put(UPLOAD_DB)
 async def events_into_db(all_events: List[EventDTO]):
-    with table.batch_writer() as batch:
-            logger.debug(f"Total events to insert: {len(all_events)}")
-            
-            for event in all_events:
-                if not isinstance(event.attribute, HouseSaleDTO):
-                    logger.debug(f"Skipping event because attribute is not a HouseSaleDTO: {event}")
-                    continue
-                
-                event_data = event.attribute.model_dump()  # Convert Pydantic model to dictionary
-                
-                if "property_id" not in event_data or event_data["property_id"] is None:
-                    logger.debug(f"Skipping event with missing property_id: {event_data}")
-                    continue
-                if "property_id" in event_data and event_data["property_id"] is not None:
-                    event_data["property_id"] = str(event_data["property_id"])
-                    batch.put_item(Item=event_data)
+    """
+    Endpoint to insert a list of events into the database.
+    Accepts a JSON array of event objects.
+    """
+    try:
+        logger.log("Inserting events into Database")
+        database_service.insert_events_into_db(all_events)
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 
 @router.post(UPLOAD_S3, response_model=FileUploadResponseDTO)
