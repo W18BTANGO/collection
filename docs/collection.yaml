@@ -1,14 +1,30 @@
 openapi: 3.0.0
 info:
   title: Collection API
-  description: API for collecting and uploading datasets to S3
-  version: 1.0.0
-
+  description: API for collecting housing data
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8000
 paths:
-  /house-prices:
+  /:
+    get:
+      summary: Base Endpoint
+      description: Base Endpoint, should prompt user to route to a specific endpoint
+      responses:
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: Data collection service. Please specify an endpoint
+  /collection/parse/dat/directory:
     post:
-      summary: Upload house prices dataset
-      description: Collects median house prices by suburb and uploads to S3.
+      summary: Parse multiple .DAT files
+      description: Parse multiple .DAT files from either a `.zip` file uploaded directly or a `.zip` file from a provided URL.
       requestBody:
         required: true
         content:
@@ -16,26 +32,57 @@ paths:
             schema:
               type: object
               properties:
-                dataset:
+                file:
                   type: string
                   format: binary
-                  description: XLSX or JSON file
+                  description: The .zip file containing .DAT files
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  description: URL of the ZIP file to download
       responses:
-        "201":
-          description: Dataset successfully uploaded
+        "200":
+          description: Successfully parsed .DAT files
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventDTO'
+        "400":
+          description: Bad Request
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  bucket_name:
+                  detail:
                     type: string
-                  dataset_id:
+        "413":
+          description: File too large
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
                     type: string
-  /rent-prices:
+        "500":
+          description: Error processing ZIP
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+  /collection/parse/dat:
     post:
-      summary: Upload rent prices dataset
-      description: Collects median rent prices by suburb and uploads to S3.
+      summary: Parse a single .DAT file
+      description: Parse a single .DAT file.
       requestBody:
         required: true
         content:
@@ -43,26 +90,39 @@ paths:
             schema:
               type: object
               properties:
-                dataset:
+                file:
                   type: string
                   format: binary
-                  description: XLSX or JSON file
+                  description: The .DAT file to parse
       responses:
-        "201":
-          description: Dataset successfully uploaded
+        "200":
+          description: Successfully parsed .DAT file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetDTO'
+        "400":
+          description: No data found to parse
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  bucket_name:
+                  detail:
                     type: string
-                  dataset_id:
+        "500":
+          description: Error processing file
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
                     type: string
-  /liveability-scores:
+  /collection/parse/dat/toevent:
     post:
-      summary: Upload liveability scores dataset
-      description: Collects liveability scores by suburb and uploads to S3.
+      summary: Collect all events and build a dataset DTO
+      description: Collect all events, build a dataset DTO, and return it as a downloadable JSON file.
       requestBody:
         required: true
         content:
@@ -70,19 +130,231 @@ paths:
             schema:
               type: object
               properties:
-                dataset:
+                file:
                   type: string
                   format: binary
-                  description: XLSX or JSON file
+                  description: The .zip file containing .DAT files
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  description: URL of the ZIP file to download
       responses:
-        "201":
-          description: Dataset successfully uploaded
+        "200":
+          description: Successfully built dataset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetDTO'
+        "400":
+          description: No valid data found
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  bucket_name:
+                  detail:
                     type: string
-                  dataset_id:
+        "500":
+          description: Error building dataset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
                     type: string
+  /collection/uploadtoDB:
+    put:
+      summary: Insert events into the database
+      description: Insert a list of events into the database. Accepts a JSON array of event objects.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/EventDTO'
+      responses:
+        "200":
+          description: Successfully inserted events into the database
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "500":
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+  /upload:
+    post:
+      summary: Upload a file to the S3 bucket
+      description: Upload a file to the S3 bucket.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to upload
+      responses:
+        "200":
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponseDTO'
+        "500":
+          description: Upload failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+  /download/{file_name}:
+    get:
+      summary: Download a file from S3
+      description: Download a file from S3.
+      parameters:
+        - name: file_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File download URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  download_url:
+                    type: string
+components:
+  schemas:
+    TimeObject:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          description: Timestamp of the event
+        duration:
+          type: integer
+          description: Duration of the event
+        duration_unit:
+          type: string
+          description: Unit of duration
+        timezone:
+          type: string
+          description: Time zone
+    HouseSaleDTO:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          description: Primary DB Key
+        district_code:
+          type: integer
+          description: District code of the property
+        property_id:
+          type: integer
+          description: Unique identifier for the property
+        price:
+          type: integer
+          description: Price of the property
+        property_name:
+          type: string
+          description: Name of the property
+        unit_number:
+          type: string
+          description: Unit number of the property
+        street_number:
+          type: string
+          description: Street number of the property
+        street_name:
+          type: string
+          description: Street name of the property
+        suburb:
+          type: string
+          description: Suburb of the property
+        postcode:
+          type: string
+          description: Postcode of the property
+        land_area:
+          type: number
+          format: float
+          description: Land area of the property
+        area_unit:
+          type: string
+          description: Unit of land area
+        contract_date:
+          type: string
+          description: Contract date of the sale
+        settlement_date:
+          type: string
+          description: Settlement date of the sale
+        zoning_code:
+          type: string
+          description: Zoning code of the property
+        property_type:
+          type: string
+          description: Type of property
+        sale_type:
+          type: string
+          description: Type of sale
+        nature_of_property:
+          type: string
+          description: Nature of the property
+    EventDTO:
+      type: object
+      properties:
+        time_object:
+          $ref: '#/components/schemas/TimeObject'
+        event_type:
+          type: string
+          description: Type of event
+        attribute:
+          $ref: '#/components/schemas/HouseSaleDTO'
+    DatasetDTO:
+      type: object
+      properties:
+        data_source:
+          type: string
+          description: Source of the dataset
+        dataset_type:
+          type: string
+          description: Dataset type
+        dataset_id:
+          type: string
+          description: Dataset identifier
+        time_object:
+          $ref: '#/components/schemas/TimeObject'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventDTO'
+    FileUploadResponseDTO:
+      type: object
+      properties:
+        message:
+          type: string
+        file_url:
+          type: string
