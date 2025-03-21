@@ -1,0 +1,16 @@
+name: 'CI Action'
+description: 'Runs tests and linting for the project'
+runs:
+  using: 'composite'
+  steps:
+    - name: Run tests (and coverage)
+      run: pytest --cov=app --cov-report=term-missing --cov-fail-under=90 tests/
+      shell: bash
+
+    - name: Run linting
+      run: flake8 app/ --count --show-source --statistics
+      shell: bash
+
+    - name: Run type checking
+      run: mypy app/
+      shell: bash
