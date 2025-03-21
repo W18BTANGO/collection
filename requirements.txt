@@ -20,6 +20,7 @@ pluggy~=1.5.0
 pydantic~=2.10.6
 pydantic_core~=2.27.2
 pytest~=8.3.5
+pytest-cov
 python-dateutil~=2.9.0.post0
 python-dotenv~=1.0.1
 python-multipart~=0.0.20
@@ -35,3 +36,4 @@ tzdata~=2025.1
 urllib3
 uvicorn~=0.34.0
 flake8
+mypy
