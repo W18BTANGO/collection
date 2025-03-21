@@ -67,11 +67,13 @@ class DatabaseService:
                     else:
                         attribute_dict = attribute
 
-                    # Check if the attribute has a 'property_id'
-                    if attribute_dict.get("property_id") is None:
-                        logger.debug(f"Skipping event with missing property_id: {attribute_dict}")
-                        continue
-                    
+                    # Ensure the attribute dictionary has the correct keys
+                    required_keys = ["transaction_id", "property_id", "price"]
+                    for key in required_keys:
+                        if key not in attribute_dict:
+                            logger.debug(f"Skipping event with missing key '{key}': {attribute_dict}")
+                            continue
+
                     # Convert property_id to string if it exists
                     if attribute_dict.get("property_id"):
                         attribute_dict["property_id"] = str(attribute_dict["property_id"])

@@ -79,6 +79,7 @@ async def parse_directory_folder(
             logger.info("Request body: " + str(body))
             url = body.get("url")
         except Exception as e:
+            logger.error(f"Invalid JSON body: {e}")
             raise HTTPException(status_code=400, detail="Invalid JSON body")
     if not file and not url:
         raise HTTPException(status_code=400, detail="Either a file or a URL must be provided.")
@@ -88,9 +89,14 @@ async def parse_directory_folder(
     zip_path = os.path.join(temp_dir, "input.zip")
     extract_path = extract_zips_from_input(temp_dir, url, file)
 
+    if not extract_path:
+        logger.error("Failed to extract ZIP file")
+        raise HTTPException(status_code=400, detail="Invalid URL")
+
     try:
         all_events = extract_events_from_directory(extract_path)
         if not all_events:
+            logger.error("No data found to parse")
             raise HTTPException(status_code=400, detail="No data found to parse")
         
         # Convert all_events to JSON
@@ -105,6 +111,7 @@ async def parse_directory_folder(
         return all_events
 
     except Exception as e:
+        logger.error(f"Error processing ZIP: {e}")
         raise HTTPException(status_code=500, detail=f"Error processing ZIP: {str(e)}")
     finally:
         if os.path.exists(zip_path):
