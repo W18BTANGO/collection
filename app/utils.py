@@ -1,6 +1,5 @@
 from fastapi import HTTPException
 import os
-# from main import parse_dat_file  # Remove this import
 import zipfile
 import logging
 from pathlib import Path
@@ -8,6 +7,7 @@ import shutil
 from decimal import Decimal
 from dotenv import load_dotenv
 import requests
+from urllib.parse import urlparse
 
 from app.services.collection_service import parse_dat_file
 
@@ -91,26 +91,46 @@ def extract_zips_from_input(temp_dir, url=None, file=None):
     extract_path = os.path.join(temp_dir, "extracted")
     os.makedirs(extract_path, exist_ok=True)
 
-    if url:
-        # Download the ZIP file from the URL
-        zip_path = os.path.join(temp_dir, "input.zip")
-        response = requests.get(url)
-        if response.status_code == 200:
-            with open(zip_path, "wb") as f:
-                f.write(response.content)
-        else:
-            raise HTTPException(status_code=400, detail="Failed to download ZIP file from URL")
-    elif file:
-        # Save the uploaded file to the temp directory
-        zip_path = os.path.join(temp_dir, file.filename)
-        with open(zip_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    else:
-        raise HTTPException(status_code=400, detail="Either a file or a URL must be provided.")
+    try:
+        if url:
+            # Validate the URL
+            parsed_url = urlparse(url)
+            if not parsed_url.scheme or not parsed_url.netloc:
+                logger.error(f"Invalid URL: {url}")
+                raise HTTPException(status_code=400, detail="Invalid URL")
 
-    # Extract the ZIP file
-    extract_all_zips(zip_path, extract_path)
-    return extract_path
+            # Download the ZIP file from the URL
+            zip_path = os.path.join(temp_dir, "input.zip")
+            response = requests.get(url)
+            if response.status_code == 200:
+                with open(zip_path, "wb") as f:
+                    f.write(response.content)
+                logger.info(f"Downloaded ZIP file from URL: {url}")
+            else:
+                logger.error(f"Failed to download ZIP file from URL: {response.status_code}")
+                raise HTTPException(status_code=400, detail="Failed to download ZIP file from URL")
+        elif file:
+            # Save the uploaded file to the temp directory
+            zip_path = os.path.join(temp_dir, file.filename)
+            with open(zip_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            logger.info(f"Saved uploaded ZIP file: {file.filename}")
+        else:
+            raise HTTPException(status_code=400, detail="Either a file or a URL must be provided.")
+
+        # Check if the file is a valid ZIP file
+        if not zipfile.is_zipfile(zip_path):
+            logger.error(f"File is not a valid ZIP file: {zip_path}")
+            raise HTTPException(status_code=400, detail="File is not a valid ZIP file")
+
+        # Extract the ZIP file
+        logger.info(f"Extracting ZIP file: {zip_path}")
+        extract_all_zips(zip_path, extract_path)
+        logger.info(f"Extracted ZIP file to: {extract_path}")
+        return extract_path
+    except Exception as e:
+        logger.error(f"Error extracting ZIP file: {e}")
+        return None
 
 def has_enough_disk_space(required_space: int, path: str = ".") -> bool:
     """Check if there is enough disk space available."""
